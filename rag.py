@@ -1,50 +1,40 @@
 from groq import Groq
-from sentence_transformers import SentenceTransformer
-import faiss
-import numpy as np
 import os
 
 class RAGPipeline:
     def __init__(self):
-        # Carrega chave secreta
+        # Lê a chave secreta do Streamlit Cloud
         api_key = os.getenv("GROQ_API_KEY")
-
-        if not api_key:
-            raise ValueError("❌ ERRO: A variável secreta GROQ_API_KEY não foi configurada.")
-
         self.client = Groq(api_key=api_key)
 
-        # Modelo de embeddings
-        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        # Armazena o texto dos PDFs enviados
+        self.documentos = []
 
-        # FAISS index
-        self.index = faiss.IndexFlatL2(384)
-        self.documents = []
+    def add_document(self, texto):
+        """Guarda o texto extraído do PDF."""
+        self.documentos.append(texto)
 
-    def add_document(self, text):
-        embedding = self.embedder.encode([text])
-        self.index.add(embedding)
-        self.documents.append(text)
+    def answer_question(self, pergunta):
+        """Envia a pergunta + o conteúdo armazenado para o LLM."""
+        contexto = "\n\n".join(self.documentos)
 
-    def search(self, query):
-        q_emb = self.embedder.encode([query])
-        distances, indices = self.index.search(q_emb, 1)
+        prompt = f"""
+Você é uma IA especialista em responder perguntas com base em documentos.
 
-        return self.documents[indices[0][0]]
+DOCUMENTO:
+{contexto}
 
-    def answer_question(self, question):
-        contexto = self.search(question)
+PERGUNTA:
+{pergunta}
 
-        prompt = (
-            f"Use APENAS essas informações do PDF para responder:\n\n"
-            f"{contexto}\n\n"
-            f"Pergunta: {question}"
-        )
+RESPOSTA:
+"""
 
-        response = self.client.chat.completions.create(
+        resposta = self.client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        return response.choices[0].message.content
-s
+        return resposta.choices[0].message.content
