@@ -2,59 +2,49 @@ from groq import Groq
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
+import os
 
 class RAGPipeline:
     def __init__(self):
-        self.client = Groq(api_key="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")
+        # Carrega chave secreta
+        api_key = os.getenv("GROQ_API_KEY")
 
-        self.model_embed = SentenceTransformer("all-MiniLM-L6-v2")
+        if not api_key:
+            raise ValueError("❌ ERRO: A variável secreta GROQ_API_KEY não foi configurada.")
 
+        self.client = Groq(api_key=api_key)
+
+        # Modelo de embeddings
+        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+        # FAISS index
         self.index = faiss.IndexFlatL2(384)
         self.documents = []
 
     def add_document(self, text):
-        chunks = self.chunk_text(text)
-        embeddings = self.model_embed.encode(chunks)
-        embeddings_np = np.array(embeddings).astype("float32")
+        embedding = self.embedder.encode([text])
+        self.index.add(embedding)
+        self.documents.append(text)
 
-        self.index.add(embeddings_np)
-        self.documents.extend(chunks)
+    def search(self, query):
+        q_emb = self.embedder.encode([query])
+        distances, indices = self.index.search(q_emb, 1)
 
-    def chunk_text(self, text, size=500):
-        words = text.split()
-        chunks = []
-        for i in range(0, len(words), size):
-            chunk = " ".join(words[i:i+size])
-            chunks.append(chunk)
-        return chunks
-
-    def retrieve(self, query, k=3):
-        query_embed = self.model_embed.encode([query]).astype("float32")
-        distances, indices = self.index.search(query_embed, k)
-
-        results = [self.documents[i] for i in indices[0]]
-        return "\n".join(results)
+        return self.documents[indices[0][0]]
 
     def answer_question(self, question):
-        relevant = self.retrieve(question)
+        contexto = self.search(question)
 
-        prompt = f"""
-Você é um assistente especialista no conteúdo abaixo:
-
-CONTEÚDO DO PDF:
-{relevant}
-
-Pergunta do usuário:
-{question}
-
-Resposta:
-"""
+        prompt = (
+            f"Use APENAS essas informações do PDF para responder:\n\n"
+            f"{contexto}\n\n"
+            f"Pergunta: {question}"
+        )
 
         response = self.client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}]
         )
 
         return response.choices[0].message.content
+s
