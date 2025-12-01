@@ -3,7 +3,7 @@ import os
 from process_pdf import extract_text_from_pdf
 from rag import RAGPipeline
 
-st.title("📚 IA para Ler PDFs (RAG) — Groq Gratuito")
+st.title("PDF SmartReader")
 
 rag = RAGPipeline()
 
@@ -41,3 +41,4 @@ if uploaded_pdf:
             st.warning("Digite uma pergunta antes de clicar!")
 else:
     st.info("Envie um PDF pela barra lateral para começar.")
+
